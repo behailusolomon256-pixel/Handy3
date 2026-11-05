@@ -55,6 +55,8 @@ function setListening(value: boolean) {
   const button = document.querySelector<HTMLButtonElement>("#record");
   const label = document.querySelector<HTMLElement>("#record-label");
   button?.classList.toggle("recording", value);
+  const languageSelect = document.querySelector<HTMLSelectElement>("#language");
+  if (languageSelect) languageSelect.disabled = value;
   if (label) label.textContent = value ? "Stop recording" : "Start speaking";
   status(value ? "Listening… speak naturally" : "Microphone is off");
 }
@@ -94,17 +96,26 @@ async function startRecording() {
   }
 }
 async function stopRecording() {
-  try {
-    await SpeechRecognition.stop();
-    setListening(false);
+  setListening(false);
+  status("Finishing transcription…");
+  // The native Android plugin emits its final recognition result asynchronously.
+  // Do not await stop(), because the plugin's Android implementation does not
+  // resolve that call after stopListening().
+  void SpeechRecognition.stop().catch(error => {
+    status(error instanceof Error ? error.message : "Could not stop recording.");
+  });
+  window.setTimeout(async () => {
     if (transcript.trim()) {
       const language = document.querySelector<HTMLSelectElement>("#language")?.value || "en-US";
       saved.unshift({ id: Date.now(), text: transcript.trim(), language, createdAt: new Date().toISOString() });
-      saved = saved.slice(0, 40); persist(); render();
+      saved = saved.slice(0, 40);
+      persist();
+      render();
+    } else {
+      status("No speech was detected. Try again.");
     }
-  } catch (error) {
-    status(error instanceof Error ? error.message : "Could not stop recording.");
-  } finally { await cleanup(); }
+    await cleanup();
+  }, 1200);
 }
 async function copyTranscript() {
   if (!transcript.trim()) return;
